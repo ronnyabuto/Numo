@@ -708,6 +708,11 @@ class PaymentRequestActivity : AppCompatActivity() {
                             // Mark as processing immediately to lock out subsequent NFC reads
                             isProcessingNfcPayment = true
 
+                            // Transition UI to PROCESSING stage
+                            runOnUiThread {
+                                showNfcAnimationProcessing()
+                            }
+
                             // Cancel the NFC safety timeout immediately as we have received data.
                             // The subsequent processing (swap/redemption) may take longer than
                             // the NFC timeout allows, but that is a network operation, not an NFC one.
@@ -1184,12 +1189,56 @@ class PaymentRequestActivity : AppCompatActivity() {
         pendingNfcSuccessToken = null
         pendingNfcSuccessAmount = 0
 
+        animationResultLabelText.animate().cancel()
+
+        // Show "Keep phone close" hint during NFC communication
+        animationResultLabelText.visibility = View.VISIBLE
+        animationResultLabelText.alpha = 0.75f
+        animationResultLabelText.translationY = animationLabelBaseTranslationY
+        animationResultLabelText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
+        animationResultLabelText.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        animationResultLabelText.gravity = android.view.Gravity.CENTER
+        animationResultLabelText.textAlignment = View.TEXT_ALIGNMENT_CENTER
+        animationResultLabelText.letterSpacing = 0.03f
+        animationResultLabelText.text = getString(R.string.nfc_payment_hint_keep_close)
+        
         nfcAnimationView.reset()
         nfcAnimationView.startReading()
         nfcAnimationStartedAtMs = SystemClock.elapsedRealtime()
         Log.d(TAG, "animation_started_ms=${nfcAnimationStartedAtMs - nfcOverlayShownAtMs}")
         startNfcSafetyTimeout()
         ViewCompat.requestApplyInsets(nfcAnimationContainer)
+    }
+
+    private fun showNfcAnimationProcessing() {
+        if (nfcAnimationContainer.visibility != View.VISIBLE) return
+        
+        // Vibrate when switching to processing phase
+        try {
+            val vibrator = getSystemService(android.content.Context.VIBRATOR_SERVICE) as android.os.Vibrator?
+            vibrator?.vibrate(longArrayOf(0, 50), -1)
+        } catch (_: Exception) {}
+        
+        // Show "Processing... You can lift your phone" hint with a gentle crossfade
+        animationResultLabelText.animate().cancel()
+        animationResultLabelText.animate()
+            .alpha(0f)
+            .setDuration(150)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                animationResultLabelText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
+                animationResultLabelText.gravity = android.view.Gravity.CENTER
+                animationResultLabelText.textAlignment = View.TEXT_ALIGNMENT_CENTER
+                animationResultLabelText.text = getString(R.string.nfc_payment_hint_processing)
+                animationResultLabelText.animate()
+                    .alpha(0.75f)
+                    .setDuration(200)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .start()
+            }
+            .start()
+        
+        nfcAnimationView.startProcessing()
     }
 
     private fun startNfcSafetyTimeout() {
@@ -1214,8 +1263,15 @@ class PaymentRequestActivity : AppCompatActivity() {
     private fun showNfcAnimationSuccess(amountText: String) {
         if (nfcAnimationContainer.visibility != View.VISIBLE) return
 
+        animationResultLabelText.animate().cancel()
+
         currentOverlayActionMode = OverlayActionMode.SUCCESS
         animationResultAmountText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 56f)
+        
+        // Reset to bold/stronger style for success title
+        animationResultLabelText.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        animationResultLabelText.letterSpacing = 0f
+        animationResultLabelText.alpha = 1f
         animationResultLabelText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
         animationResultLabelText.maxLines = 1
         animationResultAmountText.text = amountText
@@ -1242,7 +1298,14 @@ class PaymentRequestActivity : AppCompatActivity() {
     private fun showNfcAnimationError(message: String) {
         if (nfcAnimationContainer.visibility != View.VISIBLE) return
 
+        animationResultLabelText.animate().cancel()
+
         currentOverlayActionMode = OverlayActionMode.ERROR
+        
+        // Reset to bold/stronger style for error title
+        animationResultLabelText.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        animationResultLabelText.letterSpacing = 0f
+        animationResultLabelText.alpha = 1f
         animationResultLabelText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
         animationResultLabelText.maxLines = 2
         animationResultAmountText.text = ""
@@ -1363,15 +1426,19 @@ class PaymentRequestActivity : AppCompatActivity() {
     }
 
     private fun resetResultTextViews() {
+        animationResultAmountText.animate().cancel()
         animationResultAmountText.visibility = View.GONE
         animationResultAmountText.alpha = 0f
         animationResultAmountText.translationY = animationAmountBaseTranslationY
         animationResultAmountText.text = ""
 
+        animationResultLabelText.animate().cancel()
         animationResultLabelText.visibility = View.GONE
         animationResultLabelText.alpha = 0f
         animationResultLabelText.translationY = animationLabelBaseTranslationY
         animationResultLabelText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
+        animationResultLabelText.typeface = android.graphics.Typeface.DEFAULT
+        animationResultLabelText.letterSpacing = 0f
         animationResultLabelText.maxLines = 3
         animationResultLabelText.text = ""
     }
@@ -1386,6 +1453,7 @@ class PaymentRequestActivity : AppCompatActivity() {
 
     private fun resetResultActionButtons() {
         currentOverlayActionMode = OverlayActionMode.SUCCESS
+        animationActionsContainer.animate().cancel()
         animationActionsContainer.visibility = View.GONE
         animationActionsContainer.alpha = 0f
         animationActionsContainer.translationY = 0f
